@@ -6,7 +6,7 @@ Welcome to the code repository accompanying my YouTube lessons. This repository 
 
 ## 📚 Table of Contents
 
-1. [Lesson 1: Configure Atlantis for Terragrunt](./lessons/001/)
+1. [Lesson 1: CloudFormation add support to git sync](./lessons/0001/)
 
 ## YouTube Channel
 
