@@ -1,0 +1,76 @@
+---
+name: Deploy Single Lambda
+
+on:
+  push:
+    branches: ['main']
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1                                 # set this to your AWS region
+  LAMBDA_FUNCTION_NAME: my-lambda-function-from-github  # set this to your Lambda function name
+  LAMBDA_CODE_ARTIFACTS_DIR: lambdas/lambda-1           # set this to your Lambda code directory
+  LAMBDA_HANDLER: index.handler                         # set this to your Lambda handler
+  LAMBDA_RUNTIME: nodejs20.x                            # set this to your Lambda runtime
+  LAMBDA_EXECUTION_ROLE: my-lambda-function-from-github # set this to your function's IAM execution role
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+ 
+      - name: Configurar credenciais AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Preparar dependências
+        run: |
+          cd ${{ env.LAMBDA_CODE_ARTIFACTS_DIR }}
+          npm ci
+          # npm run build
+
+      - name: Criar IAM Role e Policy se necessário
+        id: create_iam_role
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd ${{ env.LAMBDA_CODE_ARTIFACTS_DIR }}
+
+          ROLE_NAME=${LAMBDA_EXECUTION_ROLE}
+          POLICY_JSON=$(jq -c .policy package.json)
+
+          # Monta o ARN da role
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          ROLE_ARN="arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME"
+
+          # Verifica se a role já existe, se não, cria
+          if ! aws iam get-role --role-name "$ROLE_NAME" >/dev/null 2>&1; then
+            TRUST_POLICY='{"Version": "2012-10-17", "Statement": [{"Effect": "Allow", "Principal": {"Service": "lambda.amazonaws.com"}, "Action": "sts:AssumeRole"}]}'
+            aws iam create-role --role-name "$ROLE_NAME" --assume-role-policy-document "$TRUST_POLICY"
+            echo "Role criada: $ROLE_ARN"
+          fi
+
+          # Adiciona a policy inline se fornecida
+          if [ -n "$POLICY_JSON" ] && [ "$POLICY_JSON" != "null" ]; then
+            aws iam put-role-policy --role-name "$ROLE_NAME" --policy-name "${LAMBDA_FUNCTION_NAME}-inline-policy" --policy-document "$POLICY_JSON"
+            echo "Policy inline aplicada à role: $ROLE_NAME"
+          fi
+
+          echo "ROLE_ARN=$ROLE_ARN" >> $GITHUB_ENV
+
+      - name: Deploy Lambda (aws-lambda-deploy)
+        uses: aws-actions/aws-lambda-deploy@v1.1.0
+        with:
+          function-name: ${{ env.LAMBDA_FUNCTION_NAME }}
+          code-artifacts-dir: ${{ env.LAMBDA_CODE_ARTIFACTS_DIR }}
+          handler: ${{ env.LAMBDA_HANDLER }}
+          runtime: ${{ env.LAMBDA_RUNTIME }}
+          role: ${{ env.ROLE_ARN }}
+          function-description: "Deployed via GitHub Actions"

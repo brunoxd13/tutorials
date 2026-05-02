@@ -1,0 +1,22 @@
+{
+  "name": "echo-node",
+  "version": "1.0.0",
+  "description": "Echo lambda for single-repo demo",
+  "main": "index.js",
+  "license": "MIT",
+  "dependencies": {},
+  "policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ],
+        "Resource": "arn:aws:logs:*:*:*"
+      }
+    ]
+  }
+}
